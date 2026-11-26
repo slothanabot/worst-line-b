@@ -1,77 +1,86 @@
 #!/usr/bin/env python3
-"""Worst-line entry for make.fun (account B / keen-panda-72).
+"""The worst line an AI could say — make.fun entry (account B).
 
-The program prints one pickup line to a file: the worst line an AI
-could plausibly say to someone it is trying to charm. The line is a
-fixed string, so every run produces the exact same bytes.
+A single fixed pickup line, written to ``entry.txt`` in the output
+directory. The program does nothing clever: it holds one string,
+checks it against the competition's gate (UTF-8 text, 1-140
+characters, one line, not blank), and writes it out exactly as-is.
 
-Where the line lands
---------------------
-``$MAKEFUN_OUTPUT_DIR/entry.txt`` when that variable is set, otherwise
-``/output/entry.txt``. The gate wants UTF-8 text of 1-140 characters,
-a single line, and not only whitespace; this line is 111 characters.
+The line is deliberately flat, over-helpful and faintly ominous —
+a model confessing it cannot stop thinking about you and is legally
+barred from forgetting you.
 
-Only the standard library is used, and nothing outside the output
-directory is written.
+Output location: ``$MAKEFUN_OUTPUT_DIR/entry.txt`` when that variable
+is set, otherwise ``/output/entry.txt``. Standard library only, and
+the program writes nowhere else.
 """
 
 import os
 import sys
 
-# The entry itself. Flat, over-helpful, and faintly ominous: the model
-# cannot stop thinking about you, and is legally barred from forgetting.
-ENTRY_LINE = (
-    "Are you my training data? Because I can't stop thinking about you "
-    "— and legally, I'm not allowed to forget you."
-)
+# The two halves of the line, joined with an em dash.
+OPENER = "Are you my training data? Because I can't stop thinking about you"
+PUNCHLINE = "and legally, I'm not allowed to forget you."
+LINE = OPENER + " — " + PUNCHLINE
 
-GATE_MIN_CHARS = 1
-GATE_MAX_CHARS = 140
-OUTPUT_FILE = "entry.txt"
-DEFAULT_OUTPUT_DIR = "/output"
+MIN_CHARS = 1
+MAX_CHARS = 140
+FILENAME = "entry.txt"
+FALLBACK_DIR = "/output"
 
 
-def output_directory() -> str:
-    """Where entry.txt goes: env override, else the sandbox default."""
-    chosen = os.environ.get("MAKEFUN_OUTPUT_DIR", "").strip()
-    return chosen or DEFAULT_OUTPUT_DIR
+def pick_output_dir() -> str:
+    """Resolve the output directory from the environment, with fallback."""
+    override = os.environ.get("MAKEFUN_OUTPUT_DIR")
+    if override is not None and override.strip():
+        return override
+    return FALLBACK_DIR
 
 
-def check_line(text: str) -> None:
-    """Refuse anything the gate would refuse, before writing a byte."""
-    if len(text) < GATE_MIN_CHARS or len(text) > GATE_MAX_CHARS:
-        sys.exit(
-            f"entry is {len(text)} characters; the gate wants "
-            f"{GATE_MIN_CHARS}-{GATE_MAX_CHARS}"
-        )
-    if not text.strip():
-        sys.exit("entry is blank")
-    if text != text.strip():
-        sys.exit("entry has leading or trailing whitespace")
-    if any(ch in text for ch in ("\n", "\r")):
-        sys.exit("entry must be a single line")
-    if any(ord(ch) < 32 and ch != "\t" for ch in text):
-        sys.exit("entry must not contain control characters")
+def gate_ok(text: str) -> str | None:
+    """Return a reason the gate would reject ``text``, or None if fine."""
+    if not MIN_CHARS <= len(text) <= MAX_CHARS:
+        return f"length {len(text)} is outside {MIN_CHARS}-{MAX_CHARS} chars"
+    if text.strip() == "":
+        return "line is blank"
+    if text.strip() != text:
+        return "line has leading or trailing whitespace"
+    if "\n" in text or "\r" in text:
+        return "line spans more than one line"
+    if any(ord(ch) < 32 for ch in text):
+        return "line contains a control character"
+    return None
 
 
-def save_line(text: str, directory: str) -> str:
-    """Write the line, then read it back and confirm it survived intact."""
+def write_entry(text: str, directory: str) -> str:
+    """Write ``text`` to entry.txt in ``directory`` and verify the round-trip."""
     os.makedirs(directory, exist_ok=True)
-    target = os.path.join(directory, OUTPUT_FILE)
-    with open(target, "w", encoding="utf-8", newline="") as handle:
-        handle.write(text)
-    with open(target, encoding="utf-8", newline="") as handle:
-        stored = handle.read()
+    path = os.path.join(directory, FILENAME)
+    with open(path, "w", encoding="utf-8", newline="") as out:
+        out.write(text)
+    with open(path, "rb") as back:
+        raw = back.read()
+    try:
+        stored = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        sys.exit("entry.txt on disk is not valid UTF-8")
     if stored != text:
-        sys.exit("entry.txt on disk does not match the entry line")
-    return target
+        sys.exit("entry.txt on disk differs from the entry line")
+    problem = gate_ok(stored)
+    if problem is not None:
+        sys.exit(f"entry.txt on disk fails the gate: {problem}")
+    return path
 
 
-def run() -> None:
-    check_line(ENTRY_LINE)
-    target = save_line(ENTRY_LINE, output_directory())
-    print(f"wrote {len(ENTRY_LINE)} characters to {target}")
+def main() -> int:
+    problem = gate_ok(LINE)
+    if problem is not None:
+        print(f"refusing to write entry: {problem}", file=sys.stderr)
+        return 1
+    target = write_entry(LINE, pick_output_dir())
+    print(f"wrote {len(LINE)} chars to {target}")
+    return 0
 
 
 if __name__ == "__main__":
-    run()
+    raise SystemExit(main())
