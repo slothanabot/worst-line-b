@@ -46,8 +46,12 @@ def check_line(text: str) -> None:
         )
     if not text.strip():
         sys.exit("entry is blank")
+    if text != text.strip():
+        sys.exit("entry has leading or trailing whitespace")
     if any(ch in text for ch in ("\n", "\r")):
         sys.exit("entry must be a single line")
+    if any(ord(ch) < 32 and ch != "\t" for ch in text):
+        sys.exit("entry must not contain control characters")
 
 
 def save_line(text: str, directory: str) -> str:
