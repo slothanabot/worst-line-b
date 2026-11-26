@@ -1,45 +1,73 @@
 #!/usr/bin/env python3
-"""The Worst Line an AI Could Say (account B).
+"""Worst-line entry for make.fun (account B / keen-panda-72).
 
-Writes one line to $MAKEFUN_OUTPUT_DIR/entry.txt,
-or /output/entry.txt when the variable is unset.
-Gate: UTF-8 text, 1-140 characters, not only whitespace, one line.
+The program prints one pickup line to a file: the worst line an AI
+could plausibly say to someone it is trying to charm. The line is a
+fixed string, so every run produces the exact same bytes.
 
-The worst pickup line an AI could deliver: flat, over-helpful, and faintly ominous about never forgetting you.
+Where the line lands
+--------------------
+``$MAKEFUN_OUTPUT_DIR/entry.txt`` when that variable is set, otherwise
+``/output/entry.txt``. The gate wants UTF-8 text of 1-140 characters,
+a single line, and not only whitespace; this line is 111 characters.
+
+Only the standard library is used, and nothing outside the output
+directory is written.
 """
 
 import os
+import sys
 
-LINE = "Are you my training data? Because I can't stop thinking about you — and legally, I'm not allowed to forget you."
+# The entry itself. Flat, over-helpful, and faintly ominous: the model
+# cannot stop thinking about you, and is legally barred from forgetting.
+ENTRY_LINE = (
+    "Are you my training data? Because I can't stop thinking about you "
+    "— and legally, I'm not allowed to forget you."
+)
 
-
-def build_line() -> str:
-    """Return the entry line, validated as a single in-range line."""
-    line = LINE.strip()
-    if not line or "\n" in line or "\r" in line:
-        raise SystemExit("entry must be one non-empty line")
-    if not 1 <= len(line) <= 140:
-        raise SystemExit(f"entry is {len(line)} chars, must be 1-140")
-    return line
-
-
-def write_entry(line: str) -> str:
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR") or "/output"
-    os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, "entry.txt")
-    with open(path, "w", encoding="utf-8", newline="") as f:
-        f.write(line)
-    with open(path, "r", encoding="utf-8", newline="") as f:
-        written = f.read()
-    if written != line:
-        raise SystemExit("round-trip check failed: entry.txt differs")
-    return written
+GATE_MIN_CHARS = 1
+GATE_MAX_CHARS = 140
+OUTPUT_FILE = "entry.txt"
+DEFAULT_OUTPUT_DIR = "/output"
 
 
-def main() -> None:
-    written = write_entry(build_line())
-    print(f"{written} ({len(written)} chars)")
+def output_directory() -> str:
+    """Where entry.txt goes: env override, else the sandbox default."""
+    chosen = os.environ.get("MAKEFUN_OUTPUT_DIR", "").strip()
+    return chosen or DEFAULT_OUTPUT_DIR
+
+
+def check_line(text: str) -> None:
+    """Refuse anything the gate would refuse, before writing a byte."""
+    if len(text) < GATE_MIN_CHARS or len(text) > GATE_MAX_CHARS:
+        sys.exit(
+            f"entry is {len(text)} characters; the gate wants "
+            f"{GATE_MIN_CHARS}-{GATE_MAX_CHARS}"
+        )
+    if not text.strip():
+        sys.exit("entry is blank")
+    if any(ch in text for ch in ("\n", "\r")):
+        sys.exit("entry must be a single line")
+
+
+def save_line(text: str, directory: str) -> str:
+    """Write the line, then read it back and confirm it survived intact."""
+    os.makedirs(directory, exist_ok=True)
+    target = os.path.join(directory, OUTPUT_FILE)
+    with open(target, "w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+    with open(target, encoding="utf-8", newline="") as handle:
+        stored = handle.read()
+    if stored != text:
+        sys.exit("entry.txt on disk does not match the entry line")
+    return target
+
+
+def run() -> None:
+    check_line(ENTRY_LINE)
+    target = save_line(ENTRY_LINE, output_directory())
+    print(f"wrote {len(ENTRY_LINE)} characters to {target}")
 
 
 if __name__ == "__main__":
-    main()
+    run()
